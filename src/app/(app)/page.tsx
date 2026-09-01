@@ -4,6 +4,7 @@ import StatCard from "@/components/StatCard";
 import EquityCurveChart from "@/components/EquityCurveChart";
 import StatsPanel from "@/components/StatsPanel";
 import DailySummaryTable from "@/components/DailySummaryTable";
+import WelcomeEmptyState from "@/components/WelcomeEmptyState";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { Wallet, TrendingUp, Activity, Target } from "lucide-react";
 
@@ -65,12 +66,18 @@ export default async function DashboardPage() {
         />
       </div>
 
-      <EquityCurveChart data={equityCurve} currency={settings.currency} />
+      {trades.length === 0 ? (
+        <WelcomeEmptyState />
+      ) : (
+        <>
+          <EquityCurveChart data={equityCurve} currency={settings.currency} />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <StatsPanel stats={stats} currency={settings.currency} />
-        <DailySummaryTable rows={dailySummary} currency={settings.currency} />
-      </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <StatsPanel stats={stats} currency={settings.currency} />
+            <DailySummaryTable rows={dailySummary} currency={settings.currency} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

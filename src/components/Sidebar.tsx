@@ -43,13 +43,16 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
                 active
                   ? "bg-emerald-500/10 text-emerald-400"
-                  : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
+                  : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100 hover:pl-4"
               )}
             >
-              <Icon className="h-4 w-4" />
+              {active && (
+                <span className="absolute -left-3 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-emerald-400" />
+              )}
+              <Icon className="h-4 w-4 transition-transform duration-150 group-hover:scale-110" />
               {item.label}
             </Link>
           );

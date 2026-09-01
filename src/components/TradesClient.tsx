@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, NotebookPen } from "lucide-react";
 import { Trade } from "@/lib/types";
 import { formatCurrency, formatNumber, cn } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import TradeFormModal from "./TradeFormModal";
+import ImportCsvModal from "./ImportCsvModal";
 
 type SideFilter = "all" | "long" | "short";
 
@@ -21,6 +22,7 @@ export default function TradesClient({
 }) {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Trade | undefined>(undefined);
   const [sideFilter, setSideFilter] = useState<SideFilter>("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -77,15 +79,26 @@ export default function TradesClient({
             </button>
           ))}
         </div>
-        <button
-          onClick={openAdd}
-          disabled={!configured}
-          title={!configured ? "Connect Supabase to add real trades" : undefined}
-          className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Plus className="h-4 w-4" />
-          Add trade
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setImportOpen(true)}
+            disabled={!configured}
+            title={!configured ? "Connect Supabase to import real trades" : undefined}
+            className="flex items-center gap-1.5 rounded-md border border-zinc-700 px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Upload className="h-4 w-4" />
+            Import CSV
+          </button>
+          <button
+            onClick={openAdd}
+            disabled={!configured}
+            title={!configured ? "Connect Supabase to add real trades" : undefined}
+            className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Plus className="h-4 w-4" />
+            Add trade
+          </button>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/60">
@@ -104,7 +117,7 @@ export default function TradesClient({
           </thead>
           <tbody className="divide-y divide-zinc-800/60">
             {sorted.map((t) => (
-              <tr key={t.id} className="text-zinc-300">
+              <tr key={t.id} className="text-zinc-300 transition-colors hover:bg-zinc-800/40">
                 <td className="px-4 py-2.5">{t.trade_date}</td>
                 <td className="px-4 py-2.5">{t.symbol}</td>
                 <td className="px-4 py-2.5">
@@ -158,8 +171,40 @@ export default function TradesClient({
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-zinc-600">
-                  No trades match this filter.
+                <td colSpan={8} className="px-4 py-14 text-center">
+                  {trades.length === 0 ? (
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800">
+                        <NotebookPen className="h-5 w-5 text-zinc-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-zinc-300">
+                          No trades logged yet
+                        </p>
+                        <p className="mt-1 text-xs text-zinc-600">
+                          Add your first trade manually, or import a CSV to get started fast.
+                        </p>
+                      </div>
+                      {configured && (
+                        <div className="mt-1 flex gap-2">
+                          <button
+                            onClick={() => setImportOpen(true)}
+                            className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
+                          >
+                            Import CSV
+                          </button>
+                          <button
+                            onClick={openAdd}
+                            className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
+                          >
+                            Add trade
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-zinc-600">No trades match this filter.</span>
+                  )}
                 </td>
               </tr>
             )}
@@ -174,6 +219,7 @@ export default function TradesClient({
           onSaved={handleSaved}
         />
       )}
+      {importOpen && <ImportCsvModal onClose={() => setImportOpen(false)} />}
     </div>
   );
 }

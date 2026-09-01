@@ -21,6 +21,14 @@ export default function CalendarView({
 
   const pnlMap = useMemo(() => dailyPnlMap(trades), [trades]);
   const monthly = useMemo(() => buildMonthlyPnl(trades), [trades]);
+  const countMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of trades) {
+      if (t.exit_price === null || t.exit_price === undefined) continue;
+      m.set(t.trade_date, (m.get(t.trade_date) ?? 0) + 1);
+    }
+    return m;
+  }, [trades]);
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -94,12 +102,26 @@ export default function CalendarView({
               <div
                 key={c.iso}
                 style={cellStyle(c.iso)}
+                title={
+                  v !== undefined
+                    ? `${countMap.get(c.iso) ?? 0} trade${(countMap.get(c.iso) ?? 0) === 1 ? "" : "s"} · ${formatCurrency(v, currency)}`
+                    : undefined
+                }
                 className={cn(
-                  "flex h-16 flex-col justify-between rounded-md border border-zinc-800/60 p-1.5 text-xs sm:h-20",
-                  !c.inMonth && "opacity-30"
+                  "flex h-16 cursor-default flex-col justify-between rounded-md border border-zinc-800/60 p-1.5 text-xs transition-all duration-150 sm:h-20",
+                  !c.inMonth && "opacity-30",
+                  v !== undefined &&
+                    "hover:z-10 hover:scale-[1.04] hover:border-zinc-600 hover:shadow-md hover:shadow-black/30"
                 )}
               >
-                <span className="text-[11px] text-zinc-400">{c.date.getDate()}</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-zinc-400">{c.date.getDate()}</span>
+                  {countMap.get(c.iso) ? (
+                    <span className="rounded-full bg-black/20 px-1 text-[9px] text-zinc-300">
+                      {countMap.get(c.iso)}
+                    </span>
+                  ) : null}
+                </div>
                 {v !== undefined && (
                   <span
                     className={cn(
