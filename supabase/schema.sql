@@ -24,10 +24,18 @@ create index if not exists trades_user_date_idx
   on public.trades (user_id, trade_date);
 
 -- Lets a CSV re-import update an already-imported trade (matched by its
--- broker ticket/order id) instead of creating a duplicate row.
-create unique index if not exists trades_user_ticket_unique
-  on public.trades (user_id, broker_ticket)
-  where broker_ticket is not null;
+-- broker ticket/order id) instead of creating a duplicate row. A plain
+-- (non-partial) unique constraint is required here: Postgres treats every
+-- NULL broker_ticket as distinct from every other one already, so trades
+-- without a ticket are never blocked by this — and unlike a partial index,
+-- a plain unique constraint can be used directly as an upsert ON CONFLICT
+-- target (Supabase's client has no way to repeat a partial index's WHERE
+-- predicate in the conflict clause).
+drop index if exists public.trades_user_ticket_unique;
+alter table public.trades
+  drop constraint if exists trades_user_ticket_unique;
+alter table public.trades
+  add constraint trades_user_ticket_unique unique (user_id, broker_ticket);
 
 create table if not exists public.account_settings (
   user_id uuid primary key references auth.users (id) on delete cascade,
