@@ -65,6 +65,7 @@ export default function ImportCsvModal({ onClose }: { onClose: () => void }) {
   }
 
   const mappingComplete = REQUIRED_FIELDS.every((f) => mapping[f]);
+  const hasTicket = Boolean(mapping.broker_ticket);
 
   async function handleImport() {
     setImporting(true);
@@ -82,7 +83,14 @@ export default function ImportCsvModal({ onClose }: { onClose: () => void }) {
       const CHUNK = 100;
       for (let i = 0; i < toInsert.length; i += CHUNK) {
         const chunk = toInsert.slice(i, i + CHUNK);
-        const { error, count } = await supabase.from("trades").insert(chunk, { count: "exact" });
+        // A ticket/order-id column lets us match this row to one we already
+        // imported, so re-dropping an updated export refreshes it in place
+        // instead of creating a duplicate trade.
+        const { error, count } = hasTicket
+          ? await supabase
+              .from("trades")
+              .upsert(chunk, { onConflict: "user_id,broker_ticket", count: "exact" })
+          : await supabase.from("trades").insert(chunk, { count: "exact" });
         if (error) failed += chunk.length;
         else ok += count ?? chunk.length;
       }
@@ -171,6 +179,13 @@ export default function ImportCsvModal({ onClose }: { onClose: () => void }) {
               <p className="text-xs text-zinc-500">
                 Matched automatically where possible — check each field, especially the required ones.
               </p>
+              {hasTicket && (
+                <p className="flex items-start gap-1.5 rounded-md border border-emerald-800/60 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  Ticket / order ID mapped — trades already imported will be updated in place, not
+                  duplicated. Safe to drop the same or an extended export again anytime.
+                </p>
+              )}
               {ALL_FIELDS.map((f) => (
                 <div key={f.key} className="flex items-center gap-3">
                   <label className="w-44 shrink-0 text-xs text-zinc-400">
@@ -200,7 +215,8 @@ export default function ImportCsvModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-3">
               <div className="flex items-center gap-4 text-sm">
                 <span className="flex items-center gap-1.5 text-emerald-400">
-                  <CheckCircle2 className="h-4 w-4" /> {validRows.length} ready to import
+                  <CheckCircle2 className="h-4 w-4" /> {validRows.length} ready to{" "}
+                  {hasTicket ? "import / update" : "import"}
                 </span>
                 {invalidRows.length > 0 && (
                   <span className="flex items-center gap-1.5 text-amber-400">
@@ -259,8 +275,9 @@ export default function ImportCsvModal({ onClose }: { onClose: () => void }) {
             <div className="flex flex-col items-center gap-3 py-8 text-center">
               <CheckCircle2 className="h-10 w-10 text-emerald-400" />
               <p className="text-sm text-zinc-200">
-                Imported <span className="font-semibold text-emerald-400">{importResult.ok}</span>{" "}
-                trade{importResult.ok === 1 ? "" : "s"}
+                {hasTicket ? "Synced" : "Imported"}{" "}
+                <span className="font-semibold text-emerald-400">{importResult.ok}</span> trade
+                {importResult.ok === 1 ? "" : "s"}
                 {importResult.failed > 0 && (
                   <> — {importResult.failed} failed to save</>
                 )}
@@ -303,7 +320,11 @@ export default function ImportCsvModal({ onClose }: { onClose: () => void }) {
               disabled={importing || validRows.length === 0}
               className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {importing ? "Importing…" : `Import ${validRows.length} trade${validRows.length === 1 ? "" : "s"}`}
+              {importing
+                ? "Importing…"
+                : `${hasTicket ? "Import / update" : "Import"} ${validRows.length} trade${
+                    validRows.length === 1 ? "" : "s"
+                  }`}
             </button>
           )}
           {step === "done" && (

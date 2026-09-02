@@ -13,6 +13,7 @@ export interface Trade {
   lot_size: number;
   pnl: number;
   notes: string | null;
+  broker_ticket?: string | null;
   created_at?: string;
 }
 

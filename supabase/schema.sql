@@ -16,11 +16,18 @@ create table if not exists public.trades (
   lot_size numeric not null default 0,
   pnl numeric not null default 0,
   notes text,
+  broker_ticket text,
   created_at timestamptz not null default now()
 );
 
 create index if not exists trades_user_date_idx
   on public.trades (user_id, trade_date);
+
+-- Lets a CSV re-import update an already-imported trade (matched by its
+-- broker ticket/order id) instead of creating a duplicate row.
+create unique index if not exists trades_user_ticket_unique
+  on public.trades (user_id, broker_ticket)
+  where broker_ticket is not null;
 
 create table if not exists public.account_settings (
   user_id uuid primary key references auth.users (id) on delete cascade,

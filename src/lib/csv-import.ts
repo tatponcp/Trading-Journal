@@ -13,7 +13,10 @@ export type TradeField =
   | "take_profit"
   | "lot_size"
   | "pnl"
-  | "notes";
+  | "commission"
+  | "swap"
+  | "notes"
+  | "broker_ticket";
 
 export const REQUIRED_FIELDS: TradeField[] = [
   "trade_date",
@@ -32,21 +35,54 @@ export const ALL_FIELDS: { key: TradeField; label: string; required: boolean }[]
   { key: "stop_loss", label: "Stop loss", required: false },
   { key: "take_profit", label: "Take profit", required: false },
   { key: "pnl", label: "P/L (auto-calculated if omitted)", required: false },
+  { key: "commission", label: "Commission (added into P/L)", required: false },
+  { key: "swap", label: "Swap (added into P/L)", required: false },
   { key: "symbol", label: "Symbol (defaults to XAUUSD)", required: false },
   { key: "notes", label: "Notes", required: false },
+  {
+    key: "broker_ticket",
+    label: "Ticket / order ID (re-import updates instead of duplicating)",
+    required: false,
+  },
 ];
 
 const FIELD_ALIASES: Record<TradeField, string[]> = {
-  trade_date: ["date", "trade date", "open date", "opendate", "day", "entry date"],
+  trade_date: [
+    "date",
+    "trade date",
+    "open date",
+    "opendate",
+    "day",
+    "entry date",
+    "opening time utc",
+    "open time utc",
+    "opening time",
+    "open time",
+    "time opened",
+  ],
   symbol: ["symbol", "pair", "instrument", "asset", "ticker"],
   side: ["side", "direction", "type", "buy/sell", "position"],
-  entry_price: ["entry", "entry price", "open", "open price", "openprice"],
-  exit_price: ["exit", "exit price", "close", "close price", "closeprice"],
+  entry_price: ["entry", "entry price", "open", "open price", "openprice", "opening price"],
+  exit_price: ["exit", "exit price", "close", "close price", "closeprice", "closing price"],
   stop_loss: ["sl", "stop loss", "stoploss", "stop"],
   take_profit: ["tp", "take profit", "takeprofit", "target"],
   lot_size: ["lot", "lots", "lot size", "volume", "size", "qty", "quantity"],
   pnl: ["pnl", "p/l", "profit", "result", "net", "net profit", "gain"],
-  notes: ["notes", "note", "comment", "comments", "remark"],
+  commission: ["commission", "comm", "fee", "fees"],
+  swap: ["swap", "rollover"],
+  notes: ["notes", "note", "comment", "comments", "remark", "close reason", "reason"],
+  broker_ticket: [
+    "ticket",
+    "order",
+    "order id",
+    "orderid",
+    "deal id",
+    "dealid",
+    "position id",
+    "positionid",
+    "ticket id",
+    "order number",
+  ],
 };
 
 export interface ParsedCsv {
@@ -71,9 +107,21 @@ export function parseCsvFile(file: File): Promise<ParsedCsv> {
   });
 }
 
+// "stop_loss", "opening-price", "Opening Time UTC" all normalize to the same
+// space-separated form so broker exports (which favor snake_case/kebab-case
+// headers) match the same alias list as human-typed CSVs.
+function normalizeHeader(h: string): string {
+  return h
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function guessMapping(headers: string[]): Partial<Record<TradeField, string>> {
   const mapping: Partial<Record<TradeField, string>> = {};
-  const normalizedHeaders = headers.map((h) => ({ raw: h, norm: h.trim().toLowerCase() }));
+  const normalizedHeaders = headers.map((h) => ({ raw: h, norm: normalizeHeader(h) }));
 
   for (const field of ALL_FIELDS.map((f) => f.key)) {
     const aliases = FIELD_ALIASES[field];
@@ -124,6 +172,14 @@ function parseNum(value: string | undefined): number | null {
   return isNaN(n) ? null : n;
 }
 
+// Some broker exports carry floating-point noise (e.g. "4309.1990000000005").
+// Prices at 3 decimal places is more than enough precision for any instrument
+// this app supports, so round it away rather than storing/displaying it.
+function parsePrice(value: string | undefined): number | null {
+  const n = parseNum(value);
+  return n === null ? null : Math.round(n * 1000) / 1000;
+}
+
 export interface RowResult {
   index: number;
   trade: NewTrade | null;
@@ -147,24 +203,32 @@ export function buildTrades(
     const side = parseSideFlexible(get("side") ?? "");
     if (!side) errors.push("Side must be long/short (or buy/sell)");
 
-    const entry_price = parseNum(get("entry_price"));
+    const entry_price = parsePrice(get("entry_price"));
     if (entry_price === null) errors.push("Invalid or missing entry price");
 
-    const exit_price = parseNum(get("exit_price"));
+    const exit_price = parsePrice(get("exit_price"));
     if (exit_price === null) errors.push("Invalid or missing exit price");
 
     const lot_size = parseNum(get("lot_size"));
     if (lot_size === null) errors.push("Invalid or missing lot size");
 
-    const stop_loss = parseNum(get("stop_loss"));
-    const take_profit = parseNum(get("take_profit"));
+    const stop_loss = parsePrice(get("stop_loss"));
+    const take_profit = parsePrice(get("take_profit"));
     const symbol = (get("symbol") ?? "XAUUSD").trim() || "XAUUSD";
     const notes = (get("notes") ?? "").trim() || null;
+    const broker_ticket = (get("broker_ticket") ?? "").trim() || null;
 
     let pnl = parseNum(get("pnl"));
     if (pnl === null && side && entry_price !== null && exit_price !== null && lot_size !== null) {
       const diff = side === "long" ? exit_price - entry_price : entry_price - exit_price;
       pnl = Math.round(diff * lot_size * CONTRACT_SIZE * 100) / 100;
+    }
+    // Broker exports often report price P/L separately from commission/swap;
+    // fold them in when the user's mapped them so the total is the real net result.
+    const commission = parseNum(get("commission"));
+    const swap = parseNum(get("swap"));
+    if (pnl !== null && (commission !== null || swap !== null)) {
+      pnl = Math.round((pnl + (commission ?? 0) + (swap ?? 0)) * 100) / 100;
     }
 
     if (errors.length > 0 || !trade_date || !side || entry_price === null || exit_price === null || lot_size === null) {
@@ -184,6 +248,7 @@ export function buildTrades(
         lot_size,
         pnl: pnl ?? 0,
         notes,
+        broker_ticket,
       },
       errors: [],
     };
