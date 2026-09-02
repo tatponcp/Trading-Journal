@@ -28,7 +28,11 @@ export default function ImportCsvModal({ onClose }: { onClose: () => void }) {
   const [mapping, setMapping] = useState<Partial<Record<TradeField, string>>>({});
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ ok: number; failed: number } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    ok: number;
+    failed: number;
+    errorMessage: string | null;
+  } | null>(null);
 
   const results: RowResult[] = useMemo(
     () => (parsed ? buildTrades(parsed.rows, mapping) : []),
@@ -80,6 +84,7 @@ export default function ImportCsvModal({ onClose }: { onClose: () => void }) {
       const toInsert = validRows.map((r) => ({ ...r.trade!, user_id: user.id }));
       let ok = 0;
       let failed = 0;
+      let errorMessage: string | null = null;
       const CHUNK = 100;
       for (let i = 0; i < toInsert.length; i += CHUNK) {
         const chunk = toInsert.slice(i, i + CHUNK);
@@ -91,10 +96,14 @@ export default function ImportCsvModal({ onClose }: { onClose: () => void }) {
               .from("trades")
               .upsert(chunk, { onConflict: "user_id,broker_ticket", count: "exact" })
           : await supabase.from("trades").insert(chunk, { count: "exact" });
-        if (error) failed += chunk.length;
-        else ok += count ?? chunk.length;
+        if (error) {
+          failed += chunk.length;
+          if (!errorMessage) errorMessage = error.message;
+        } else {
+          ok += count ?? chunk.length;
+        }
       }
-      setImportResult({ ok, failed });
+      setImportResult({ ok, failed, errorMessage });
       setStep("done");
       router.refresh();
     } catch (err) {
@@ -273,7 +282,11 @@ export default function ImportCsvModal({ onClose }: { onClose: () => void }) {
 
           {step === "done" && importResult && (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <CheckCircle2 className="h-10 w-10 text-emerald-400" />
+              {importResult.ok > 0 ? (
+                <CheckCircle2 className="h-10 w-10 text-emerald-400" />
+              ) : (
+                <AlertTriangle className="h-10 w-10 text-amber-400" />
+              )}
               <p className="text-sm text-zinc-200">
                 {hasTicket ? "Synced" : "Imported"}{" "}
                 <span className="font-semibold text-emerald-400">{importResult.ok}</span> trade
@@ -282,6 +295,11 @@ export default function ImportCsvModal({ onClose }: { onClose: () => void }) {
                   <> — {importResult.failed} failed to save</>
                 )}
               </p>
+              {importResult.errorMessage && (
+                <p className="max-w-md rounded-md border border-red-900/60 bg-red-500/10 px-3 py-2 text-left text-xs text-red-300">
+                  {importResult.errorMessage}
+                </p>
+              )}
             </div>
           )}
         </div>
